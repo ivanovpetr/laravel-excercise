@@ -11,6 +11,9 @@ class CategoriesTableSeeder extends Seeder
      */
     public function run()
     {
-        //
+        //TODO возможно есть вариант делать сидинг со вложеностями категорий
+        factory(App\Category::class, 15)->create()->each(function ($s) {
+            $s->products()->saveMany(factory(App\Product::class, random_int(1, 4))->create());
+        });
     }
 }

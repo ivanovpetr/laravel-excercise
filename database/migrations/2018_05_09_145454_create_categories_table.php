@@ -20,8 +20,6 @@ class CreateCategoriesTable extends Migration
             $table->integer('lft')->nullable();
             $table->integer('rgt')->nullable();
             $table->integer('depth')->nullable();
-            $table->string('name', 255);
-            $table->timestamps();
         });
     }
 

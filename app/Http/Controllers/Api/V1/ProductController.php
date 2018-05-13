@@ -3,73 +3,67 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\ProductResource;
 use Illuminate\Http\Request;
 use App\Product;
 use App\Category;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class ProductController extends Controller
 {
     /**
      * Display a listing of the resource.
-     *
-     * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
-        $products = Product::query()->select('id', 'title', 'description', 'image')->get();
+        if (isset($request->category)) {
+            $products = Product::query()
+                ->where('category_id', '=', $request->category)
+                ->paginate($request->perPage ?: 15);
+        } else {
+            $products = Product::query()->paginate($request->perPage ?: 15);
+        }
 
-        return response()->json(
-            [
-                'success' => true,
-                'data'    => [
-                    'products' => $products
-                ]
-            ]
-        );
-    }
-
-    /**
-     * Show the form for creating a new resource.
-     *
-     * @return \Illuminate\Http\Response
-     */
-    public function create()
-    {
-        $categories = Category::query()->select('id','title');
-
-        return response()->json(
-            [
-                'success' => true,
-                'data'    => [
-                    'categories' => $categories
-                ]
-            ]
-        );
+        return ProductResource::collection($products);
     }
 
     /**
      * Store a newly created resource in storage.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
      */
     public function store(Request $request)
     {
-        $categories = Category::query()->pluck('id')->toArray();
+        //category_id должен существовать в таблице categories
+        //или быть нулем если мы хотим убрать категорию товара
+        $validationArray = Category::query()->pluck('id')->toArray();
+        array_push($validationArray, 0);
         $this->validate($request, [
             'title' => 'required|max:255',
             'image' => 'image',
-            'category_id' => ['integer', 'required', Rule::in($categories)]
+            'category_id' => ['integer', Rule::in($validationArray)],
+            'description' => 'required|string'
         ]);
 
-        $product = (new Product)->fill([
-            'title' => $request->title,
-            'category_id' => $request->category_id,
-            'description' => $request->description,
-        ]);
-
+        //Определение действия
+        if ($request->isMethod('put')) {
+            $product = Product::query()->findOrfail($request->product_id);
+        } else {
+            $product = new Product();
+        }
+        $product->title = $request->input('title');
+        $product->description = $request->input('description');
+        //связь с категорией
+        if ($request->has('category_id')) {
+            if ($request->input('category_id') === '0') {
+                $product->category_id = $request->input('category_id');
+            } else {
+                $product->category_id = null;
+            }
+        }
+        //изображение
         if ($request->hasFile('image')) {
             $path = Storage::putFileAs(
                 'products',
@@ -80,99 +74,30 @@ class ProductController extends Controller
         }
 
         $product->save();
-
-        return response()->json(
-            [
-                'success' => true,
-                'data'    => [
-                    'product' => $product
-                ]
-            ]
-        );
+        return new ProductResource($product);
     }
 
     /**
      * Display the specified resource.
      *
      * @param  int  $id
-     * @return \Illuminate\Http\Response
      */
     public function show($id)
     {
         $product = Product::query()->findOrFail($id);
-        $categories = Category::query()->select('id','title');
-
-        return response()->json(
-            [
-                'success' => true,
-                'data'    => [
-                    'product' => $product,
-                    'categories' => $categories
-                ]
-            ]
-        );
-    }
-    /**
-     * Update the specified resource in storage.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function update(Request $request, $id)
-    {
-        $categories = Category::query()->pluck('id')->toArray();
-        $this->validate($request, [
-            'title' => 'required|max:255',
-            'image' => 'image',
-            'category_id' => ['integer', 'required', Rule::in($categories)]
-        ]);
-
-        $product = Product::query()->find($id);
-        if ($product === null) {
-            return response()->json(['success' => false]);
-        }
-
-        $product->fill([
-            'title' => $request->title,
-            'category_id' => $request->category_id,
-            'description' => $request->description,
-        ]);
-
-        if ($request->hasFile('image')) {
-            $path = Storage::putFileAs(
-                'products',
-                $request->image,
-                'img' . time() . random_int(0, 9) . random_int(0, 9) . '.' . $request->image->extension()
-            );
-            $product->image = $path;
-        }
-
-        $product->save();
-
-        return response()->json(
-            [
-                'success' => true,
-                'data'    => [
-                    'product' => $product
-                ]
-            ]
-        );
+        return new ProductResource($product);
     }
 
     /**
      * Remove the specified resource from storage.
      *
      * @param  int  $id
-     * @return \Illuminate\Http\Response
      */
     public function destroy($id)
     {
-        $product = Product::query()->find($id);
-        if ($product === null) {
-            return response()->json(['success' => false]);
-        }
+        $product = Product::query()->findOrFail($id);
         $product->delete();
-        return response()->json(['success' => true]);
+        return new ProductResource($product);
+
     }
 }
